@@ -1,0 +1,25 @@
+<launch>
+    <arg name="robot_type" default="a1" doc="Robot type: [a1, aliengo, go1, laikago, f1]"/>
+    <arg name="user_debug" default="false"/>
+    
+    <param name="robot_description" command="$(find xacro)/xacro --inorder '$(find legged_unitree_description)/urdf/robot.xacro'
+            robot_type:=$(arg robot_type)"/>
+
+    <!-- for higher robot_state_publisher average rate-->
+    <!-- <param name="rate" value="1000"/> -->
+
+    <!-- send fake joint values -->
+    <!--<node pkg="joint_state_publisher" type="joint_state_publisher" name="joint_state_publisher">
+        <param name="use_gui" value="TRUE"/>
+    </node>-->
+
+    <node pkg="joint_state_publisher_gui" type="joint_state_publisher_gui" name="joint_state_publisher"/>
+
+    <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher">
+        <param name="publish_frequency" type="double" value="1000.0"/>
+    </node>
+
+    <node pkg="rviz" type="rviz" name="rviz" respawn="false" output="screen"
+        args="-d $(find legged_unitree_description)/launch/check_joint.rviz"/>
+
+</launch>
