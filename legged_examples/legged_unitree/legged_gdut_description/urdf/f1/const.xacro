@@ -7,13 +7,13 @@
 
     <!-- simplified collision value -->
     <xacro:property name="trunk_width" value="0.32"/>
-    <xacro:property name="trunk_length" value="0.698"/>
+    <xacro:property name="trunk_length" value="0.512"/>
     <xacro:property name="trunk_height" value="0.155"/>
     <xacro:property name="hip_radius" value="0.064"/>
     <xacro:property name="hip_length" value="0.056"/><!-- -->
     <xacro:property name="thigh_shoulder_radius" value="0.064"/>
-    <xacro:property name="thigh_shoulder_length" value="0.134"/>
-    <xacro:property name="thigh_shoulder_y_offset" value="0.1201"/>
+    <xacro:property name="thigh_shoulder_length" value="0.047"/>
+    <xacro:property name="thigh_shoulder_y_offset" value="0.0"/>
 
     <xacro:property name="thigh_width" value="0.047"/>
     <xacro:property name="thigh_height" value="0.07"/>
@@ -34,19 +34,30 @@
     <xacro:property name="trunk_offset_z" value="0.01675"/>
     <xacro:property name="hip_offset" value="0.1201"/>    <!-- thigh_offset_y-->
 
+    <!-- offset of link and rotor locations (left front) -->
+    <xacro:property name="hip_rotor_offset_x" value="0.1962"/>
+    <xacro:property name="hip_rotor_offset_y" value="0.094"/>
+    <xacro:property name="hip_rotor_offset_z" value="0.0"/>
+    <xacro:property name="thigh_rotor_offset_x" value="0.0"/>
+    <xacro:property name="thigh_rotor_offset_y" value="-0.03917"/>
+    <xacro:property name="thigh_rotor_offset_z" value="0.0"/>
+    <xacro:property name="calf_rotor_offset_x" value="0.0"/>
+    <xacro:property name="calf_rotor_offset_y" value="-0.08583"/>
+    <xacro:property name="calf_rotor_offset_z" value="0.0"/>
+
     <!-- joint limits -->
     <xacro:property name="damping" value="0"/>
     <xacro:property name="friction" value="0"/>
-    <xacro:property name="hip_max" value="0.75"/>
-    <xacro:property name="hip_min" value="-0.75"/>
+    <xacro:property name="hip_position_max" value="0.75"/>
+    <xacro:property name="hip_position_min" value="-0.75"/>
     <xacro:property name="hip_velocity_max" value="19.69"/>
     <xacro:property name="hip_torque_max" value="91.0035"/>
-    <xacro:property name="thigh_max" value="3.5"/>
-    <xacro:property name="thigh_min" value="-1.0"/>
+    <xacro:property name="thigh_position_max" value="3.5"/>
+    <xacro:property name="thigh_position_min" value="-1.0"/>
     <xacro:property name="thigh_velocity_max" value="23.32"/>
     <xacro:property name="thigh_torque_max" value="93.33"/>
-    <xacro:property name="calf_max" value="-0.6"/>
-    <xacro:property name="calf_min" value="-2.6"/>
+    <xacro:property name="calf_position_max" value="-0.6"/>
+    <xacro:property name="calf_position_min" value="-2.6"/>
     <xacro:property name="calf_velocity_max" value="15.55"/>
     <xacro:property name="calf_torque_max" value="140"/>
 
@@ -75,6 +86,17 @@
     <xacro:property name="hip_iyz" value="0.00005638"/>
     <xacro:property name="hip_izz" value="0.00626340"/>
 
+    <xacro:property name="hip_rotor_mass" value="0.121"/><!-- 质心相对于hip转子的位置-->
+    <xacro:property name="hip_rotor_com_x" value="0.0"/>
+    <xacro:property name="hip_rotor_com_y" value="0.0"/>
+    <xacro:property name="hip_rotor_com_z" value="0.0"/>
+    <xacro:property name="hip_rotor_ixx" value="0.000103801"/>
+    <xacro:property name="hip_rotor_ixy" value="0.0"/>
+    <xacro:property name="hip_rotor_ixz" value="0.0"/>
+    <xacro:property name="hip_rotor_iyy" value="0.000054638"/>
+    <xacro:property name="hip_rotor_iyz" value="0.0"/>
+    <xacro:property name="hip_rotor_izz" value="0.000054638"/>
+
     <!-- thigh -->
     <xacro:property name="thigh_mass" value="2.459"/><!-- 重心相对于thigh关节的位置-->
     <xacro:property name="thigh_com_x" value="-0.00473154"/>
@@ -87,6 +109,17 @@
     <xacro:property name="thigh_iyz" value="-0.00404389"/>
     <xacro:property name="thigh_izz" value="0.00849196"/>
 
+    <xacro:property name="thigh_rotor_mass" value="0.121"/>
+    <xacro:property name="thigh_rotor_com_x" value="0.0"/>
+    <xacro:property name="thigh_rotor_com_y" value="0.0"/>
+    <xacro:property name="thigh_rotor_com_z" value="0.0"/>
+    <xacro:property name="thigh_rotor_ixx" value="0.000103801"/>
+    <xacro:property name="thigh_rotor_ixy" value="0.0"/>
+    <xacro:property name="thigh_rotor_ixz" value="0.0"/>
+    <xacro:property name="thigh_rotor_iyy" value="0.000054638"/>
+    <xacro:property name="thigh_rotor_iyz" value="0.0"/>
+    <xacro:property name="thigh_rotor_izz" value="0.000054638"/>
+
     <!-- calf -->
     <xacro:property name="calf_mass" value="0.48137357"/><!-- 质心相对于calf关节的位置-->
     <xacro:property name="calf_com_x" value="0.00091003"/>
@@ -98,6 +131,17 @@
     <xacro:property name="calf_iyy" value="0.00745747"/>
     <xacro:property name="calf_iyz" value="0.00000137"/>
     <xacro:property name="calf_izz" value="0.00014153"/>
+
+    <xacro:property name="calf_rotor_mass" value="0.121"/>
+    <xacro:property name="calf_rotor_com_x" value="0.0"/>
+    <xacro:property name="calf_rotor_com_y" value="0.0"/>
+    <xacro:property name="calf_rotor_com_z" value="0.0"/>
+    <xacro:property name="calf_rotor_ixx" value="0.000103801"/>
+    <xacro:property name="calf_rotor_ixy" value="0.0"/>
+    <xacro:property name="calf_rotor_ixz" value="0.0"/>
+    <xacro:property name="calf_rotor_iyy" value="0.000054638"/>
+    <xacro:property name="calf_rotor_iyz" value="0.0"/>
+    <xacro:property name="calf_rotor_izz" value="0.000054638"/>
 
     <!-- foot -->
     <xacro:property name="foot_mass" value="0.05"/>
