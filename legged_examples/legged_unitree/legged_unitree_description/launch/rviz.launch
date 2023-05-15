@@ -1,7 +1,6 @@
 <launch>
     <arg name="robot_type" default="a1" doc="Robot type: [a1, aliengo, go1, laikago, f1]"/>
-    <arg name="user_debug" default="false"/>
-    
+
     <param name="robot_description" command="$(find xacro)/xacro --inorder '$(find legged_unitree_description)/urdf/robot.xacro'
             robot_type:=$(arg robot_type)"/>
 
