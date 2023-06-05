@@ -6,8 +6,8 @@
 
     <node pkg="joy" type="joy_node" name="joy_node">
         <param name="dev" value="$(arg joy_dev)"/>
-        <param name="deadzone" value="1e-3"/>
-        <param name="autorepeat_rate" value="10"/>
+        <param name="deadzone" value="2e-1"/>
+        <param name="autorepeat_rate" value="1000"/>
         <param name="coalesce_interval" value="0.05"/>
     </node>
 
