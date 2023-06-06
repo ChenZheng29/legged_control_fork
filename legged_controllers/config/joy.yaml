@@ -14,3 +14,36 @@ teleop:
       - axis: 3
         target: angular.z
         scale: 1.0
+
+  A_button:
+    type: topic
+    message_type: legged_controllers/gait_command
+    topic_name: joy_command
+    deadman_buttons: [ 0 ]
+    message_value:
+      - target: A
+        value: 1.0
+  B_button:
+    type: topic
+    message_type: legged_controllers/gait_command
+    topic_name: joy_command
+    deadman_buttons: [ 1 ]
+    message_value:
+      - target: B
+        value: 1.0
+  X_button:
+    type: topic
+    message_type: legged_controllers/gait_command
+    topic_name: joy_command
+    deadman_buttons: [ 2 ]
+    message_value:
+      - target: X
+        value: 1.0
+  Y_button:
+    type: topic
+    message_type: legged_controllers/gait_command
+    topic_name: joy_command
+    deadman_buttons: [ 3 ]
+    message_value:
+      - target: Y
+        value: 1.0

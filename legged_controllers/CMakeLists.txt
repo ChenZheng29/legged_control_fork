@@ -15,10 +15,22 @@ find_package(catkin REQUIRED
         ocs2_legged_robot_ros
         ocs2_self_collision_visualization
         angles
+        std_msgs
+        message_generation
         )
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(pinocchio REQUIRED pinocchio)
+
+add_message_files(
+        FILES
+        gait_command.msg
+)
+
+generate_messages(
+        DEPENDENCIES
+        std_msgs
+)
 
 catkin_package(
         INCLUDE_DIRS
@@ -78,6 +90,20 @@ target_link_libraries(legged_target_trajectories_publisher
         )
 target_compile_options(legged_target_trajectories_publisher PRIVATE ${OCS2_CXX_FLAGS})
 
+# Gait Command publish node
+add_executable(legged_gait_command_publisher
+        src/GaitJoystickPublisher.cpp
+        )
+add_dependencies(legged_gait_command_publisher
+        ${PROJECT_NAME}
+        ${catkin_EXPORTED_TARGETS}
+        )
+target_link_libraries(legged_gait_command_publisher
+        ${PROJECT_NAME}
+        ${catkin_LIBRARIES}
+        )
+target_compile_options(legged_gait_command_publisher PRIVATE ${OCS2_CXX_FLAGS})
+
 #########################
 ###   CLANG TOOLING   ###
 #########################
@@ -85,7 +111,7 @@ find_package(cmake_clang_tools QUIET)
 if (cmake_clang_tools_FOUND)
     message(STATUS "Run clang tooling for target " ${PROJECT_NAME})
     add_clang_tooling(
-            TARGETS ${PROJECT_NAME} legged_target_trajectories_publisher
+            TARGETS ${PROJECT_NAME} legged_target_trajectories_publisher legged_gait_command_publisher
             SOURCE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/src ${CMAKE_CURRENT_SOURCE_DIR}/include
             CT_HEADER_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/include
             CF_WERROR
