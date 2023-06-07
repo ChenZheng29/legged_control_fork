@@ -1,5 +1,5 @@
 teleop:
-  walk:
+  move:
     type: topic
     message_type: geometry_msgs/Twist
     topic_name: cmd_vel
@@ -15,35 +15,26 @@ teleop:
         target: angular.z
         scale: 1.0
 
-  A_button:
+  mode:
     type: topic
     message_type: legged_controllers/gait_command
     topic_name: joy_command
-    deadman_buttons: [ 0 ]
-    message_value:
-      - target: A
-        value: 1.0
-  B_button:
-    type: topic
-    message_type: legged_controllers/gait_command
-    topic_name: joy_command
-    deadman_buttons: [ 1 ]
-    message_value:
-      - target: B
-        value: 1.0
-  X_button:
-    type: topic
-    message_type: legged_controllers/gait_command
-    topic_name: joy_command
-    deadman_buttons: [ 2 ]
-    message_value:
-      - target: X
-        value: 1.0
-  Y_button:
-    type: topic
-    message_type: legged_controllers/gait_command
-    topic_name: joy_command
-    deadman_buttons: [ 3 ]
-    message_value:
-      - target: Y
-        value: 1.0
+    deadman_buttons: [ ]
+    axis_mappings:
+      # gait switch
+      - button: 0
+        target: A
+        scale: 1.0
+      - button: 1
+        target: B
+        scale: 1.0
+      - button: 2
+        target: X
+        scale: 1.0
+      - button: 3
+        target: Y
+        scale: 1.0
+      # locomotion switch
+      - button: 5
+        target: RB
+        scale: 1.0
