@@ -38,3 +38,10 @@ teleop:
       - button: 5
         target: RB
         scale: 1.0
+      # position control
+      - button: 4
+        target: LB
+        scale: 1.0
+      - axis: 2
+        target: LT
+        scale: 1.0

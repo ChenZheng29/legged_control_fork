@@ -19,6 +19,22 @@ defaultJointState
    (11,0) -1.50   ; RH_KFE
 }
 
+squatJointState
+{
+   (0,0)  -0.10   ; LF_HAA
+   (1,0)   1.10   ; LF_HFE
+   (2,0)  -2.60   ; LF_KFE
+   (3,0)  -0.10   ; LH_HAA
+   (4,0)   1.10   ; LH_HFE
+   (5,0)  -2.60   ; LH_KFE
+   (6,0)   0.10   ; RF_HAA
+   (7,0)   1.10   ; RF_HFE
+   (8,0)  -2.60   ; RF_KFE
+   (9,0)   0.10   ; RH_HAA
+   (10,0)  1.10   ; RH_HFE
+   (11,0) -2.60   ; RH_KFE
+}
+
 initialModeSchedule
 {
   modeSequence

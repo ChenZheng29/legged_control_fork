@@ -74,6 +74,17 @@ class LeggedController : public controller_interface::MultiInterfaceController<H
   std::atomic_bool controllerRunning_{}, mpcRunning_{};
   benchmark::RepeatedTimer mpcTimer_;
   benchmark::RepeatedTimer wbcTimer_;
+
+  ros::Subscriber joySubscriber_;
+  vector_t defaultJointState_;
+  vector_t squatJointState_;
+  vector_array_t jointDesSequence_;
+  int sequenceIndex_{};
+  double lastRB_{}, lastLB_{}, lastLT_{};
+  bool locomotionEnable_{};
+  bool initLocomotionSwitch_{};
+  int status_{};
+  int lastStatus_{};
 };
 
 class LeggedCheaterController : public LeggedController {
