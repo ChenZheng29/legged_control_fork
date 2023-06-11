@@ -2,7 +2,6 @@
 
 <launch>
     <arg name="robot_type" default="a1" doc="Robot type: [a1, aliengo, go1, laikago]"/>
-
     <arg name="cheater" default="false"/>
 
     <!-- make the files into global parameters -->
@@ -26,9 +25,20 @@
           controllers/legged_controller
 "/>
 
-    <node pkg="legged_controllers" type="legged_gait_command_publisher" name="legged_robot_gait_command"
+    <node pkg="legged_controllers" type="legged_gait_publisher" name="legged_robot_gait"
           output="screen"/>
 
-    <node pkg="legged_controllers" type="legged_target_trajectories_publisher" name="legged_robot_target"
+    <node pkg="legged_controllers" type="legged_target_trajectories_publisher" name="legged_robot_target_trajectories"
           output="screen"/>
+
+    <node pkg="joy" type="joy_node" name="joy_node">
+        <param name="deadzone" value="2e-1"/>
+        <param name="autorepeat_rate" value="1000"/>
+        <param name="default_trig_val" value="true"/>
+    </node>
+
+    <node pkg="legged_controllers" type="legged_joystick_command_publisher" name="legged_joystick_command_publisher">
+        <param name="linear_vel_scale" value="1.0"/>
+        <param name="angular_vel_scale" value="1.0"/>
+    </node>
 </launch>

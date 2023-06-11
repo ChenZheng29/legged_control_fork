@@ -10,17 +10,15 @@
 #include <std_msgs/Bool.h>
 #include <ocs2_legged_robot/gait/ModeSequenceTemplate.h>
 
-#include "legged_controllers/gait_command.h"
-
 namespace legged {
 
 /** This class implements ModeSequence communication using ROS. */
-class GaitJoystickPublisher {
+class GaitPublisher {
  public:
-  GaitJoystickPublisher(ros::NodeHandle nodeHandle,
-                        const std::string &gaitFile,
-                        const std::string &robotName,
-                        bool verbose = false);
+  GaitPublisher(ros::NodeHandle nodeHandle,
+                const std::string &gaitFile,
+                const std::string &robotName,
+                bool verbose = false);
 
  private:
   /** Prints the list of available gaits. */
@@ -31,7 +29,7 @@ class GaitJoystickPublisher {
   std::string currentGait_;
 
   ros::Publisher modeSequenceTemplatePublisher_;
-  ros::Subscriber joySubscriber_;
+  ros::Subscriber statusSubscriber_;
 };
 
 }  // namespace legged

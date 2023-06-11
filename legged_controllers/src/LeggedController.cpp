@@ -5,7 +5,7 @@
 #include <pinocchio/fwd.hpp>  // forward declarations must be included first.
 
 #include "legged_controllers/LeggedController.h"
-#include "legged_controllers/gait_command.h"
+#include "legged_controllers/status_command.h"
 
 #include <ocs2_centroidal_model/AccessHelperFunctions.h>
 #include <ocs2_centroidal_model/CentroidalModelPinocchioMapping.h>
@@ -79,28 +79,22 @@ bool LeggedController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHand
   loadData::loadEigenMatrix(referenceFile, "defaultJointState", defaultJointState_);
   loadData::loadEigenMatrix(referenceFile, "squatJointState", squatJointState_);
 
-  auto joyCommandCallback = [this](const legged_controllers::gait_command::ConstPtr &msg) {
-    if (lastRB_ == 0.0 && msg->RB == 1.0) {
+  auto statusCommandCallback = [this](const legged_controllers::status_command::ConstPtr &msg) {
+    if (locomotionEnable_ != msg->locomotion_enable) {
+      locomotionEnable_ = msg->locomotion_enable;
       initLocomotionSwitch_ = false;
-      locomotionEnable_ = !locomotionEnable_;
     }
-    if (lastLB_ == 0.0 && msg->LB == 1.0) {
-      if (status_ < 2)
-        status_++;
-    }
-    if (lastLT_ != -1.0 && msg->LT == -1.0) {
-      if (status_ > 0)
-        status_--;
-    }
-    if (lastStatus_ != status_) {
+
+    if (stage_ != msg->stage) {
+      stage_ = msg->stage;
       jointDesSequence_.clear();
-      if (status_ != 0) {
+      if (stage_ != 0) {
         vector_t jointDes(12), jointCurrent(12), jointError(12), jointStep(12);
         double timeHorizon = 0.5;
         int num = (int) (timeHorizon / 0.001);
-        if (status_ == 1)
+        if (stage_ == 1)
           jointDes = squatJointState_;
-        else if (status_ == 2)
+        else if (stage_ == 2)
           jointDes = defaultJointState_;
         for (int i = 0; i < 12; ++i) {
           jointCurrent(i) = hybridJointHandles_[i].getPosition();
@@ -118,12 +112,8 @@ bool LeggedController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHand
         sequenceIndex_ = 0;
       }
     }
-    lastRB_ = msg->RB;
-    lastLB_ = msg->LB;
-    lastLT_ = msg->LT;
-    lastStatus_ = status_;
   };
-  joySubscriber_ = nh.subscribe<legged_controllers::gait_command>("/joy_command", 1, joyCommandCallback);
+  statusSubscriber_ = nh.subscribe<legged_controllers::status_command>("/status_command", 1, statusCommandCallback);
 
   return true;
 }
@@ -146,8 +136,6 @@ void LeggedController::starting(const ros::Time& time) {
     ros::WallRate(leggedInterface_->mpcSettings().mrtDesiredFrequency_).sleep();
   }
   ROS_INFO_STREAM("Initial policy has been received.");
-
-  mpcRunning_ = true;
 }
 
 void LeggedController::update(const ros::Time& time, const ros::Duration& period) {
@@ -158,12 +146,14 @@ void LeggedController::update(const ros::Time& time, const ros::Duration& period
     if (!initLocomotionSwitch_) {
       TargetTrajectories target_trajectories({currentObservation_.time}, {currentObservation_.state}, {currentObservation_.input});
       mpcMrtInterface_->resetMpcNode(target_trajectories);
+      mpcMrtInterface_->setCurrentObservation(currentObservation_);
+      mpcMrtInterface_->advanceMpc();
       mpcRunning_ = true;
       initLocomotionSwitch_ = true;
+      ROS_INFO("[Legged Controller] mpc and wbc control");
       return;
     }
 
-    ROS_INFO_ONCE("[Legged Controller] mpc and wbc control");
     // Update the current state of the system
     mpcMrtInterface_->setCurrentObservation(currentObservation_);
 
@@ -203,9 +193,10 @@ void LeggedController::update(const ros::Time& time, const ros::Duration& period
     if (!initLocomotionSwitch_) {
       mpcRunning_ = false;
       initLocomotionSwitch_ = true;
+      ROS_INFO("[Legged Controller] position control");
       return;
     }
-    ROS_INFO_ONCE("[Legged Controller] position control");
+
     if (jointDesSequence_.empty()) {
       for (int j = 0; j < leggedInterface_->getCentroidalModelInfo().actuatedDofNum; ++j) {
         hybridJointHandles_[j].setCommand(0, 0, 0, 20, 0);

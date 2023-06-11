@@ -2,7 +2,8 @@
 // Created by chenzheng on 2023/6/5.
 //
 
-#include "legged_controllers/GaitJoystickPublisher.h"
+#include "legged_controllers/GaitPublisher.h"
+#include "legged_controllers/status_command.h"
 
 #include <algorithm>
 
@@ -15,10 +16,10 @@
 using namespace legged;
 using namespace ocs2;
 
-GaitJoystickPublisher::GaitJoystickPublisher(ros::NodeHandle nodeHandle,
-                                             const std::string &gaitFile,
-                                             const std::string &robotName,
-                                             bool verbose) {
+GaitPublisher::GaitPublisher(ros::NodeHandle nodeHandle,
+                             const std::string &gaitFile,
+                             const std::string &robotName,
+                             bool verbose) {
   ROS_INFO_STREAM(robotName + "_mpc_mode_schedule node is setting up ...");
   loadData::loadStdVector(gaitFile, "list", gaitList_, verbose);
 
@@ -30,16 +31,9 @@ GaitJoystickPublisher::GaitJoystickPublisher(ros::NodeHandle nodeHandle,
     gaitMap_.insert({gaitName, legged_robot::loadModeSequenceTemplate(gaitFile, gaitName, verbose)});
   }
 
-  auto joyCommandCallback = [this](const legged_controllers::gait_command::ConstPtr &msg) {
+  auto statusCommandCallback = [this](const legged_controllers::status_command::ConstPtr &msg) {
     std::string gaitCommand;
-    if (msg->A == 1.0)
-      gaitCommand = "trot";
-    else if (msg->B == 1.0)
-      gaitCommand = "flying_trot";
-    else if (msg->X == 1.0)
-      gaitCommand = "pace";
-    else if (msg->Y == 1.0)
-      gaitCommand = "stance";
+    gaitCommand = msg->gait;
 
     try {
       if (!gaitCommand.empty() && gaitCommand != currentGait_) {
@@ -52,12 +46,12 @@ GaitJoystickPublisher::GaitJoystickPublisher(ros::NodeHandle nodeHandle,
       printGaitList(gaitList_);
     }
   };
-  joySubscriber_ = nodeHandle.subscribe<legged_controllers::gait_command>("/joy_command", 1, joyCommandCallback);
+  statusSubscriber_ = nodeHandle.subscribe<legged_controllers::status_command>("/status_command", 1, statusCommandCallback);
 
   ROS_INFO_STREAM(robotName + "_mpc_mode_schedule command node is ready.");
 }
 
-void GaitJoystickPublisher::printGaitList(const std::vector<std::string> &gaitList) {
+void GaitPublisher::printGaitList(const std::vector<std::string> &gaitList) {
   std::cout << "List of available gaits:\n";
   size_t itr = 0;
   for (const auto &s : gaitList) {
@@ -77,7 +71,7 @@ int main(int argc, char *argv[]) {
   nodeHandle.getParam("/gaitCommandFile", gaitCommandFile);
   std::cerr << "Loading gait file: " << gaitCommandFile << std::endl;
 
-  GaitJoystickPublisher gaitCommand(nodeHandle, gaitCommandFile, robotName, true);
+  GaitPublisher gaitPublisher(nodeHandle, gaitCommandFile, robotName, true);
 
   ros::spin();
   
