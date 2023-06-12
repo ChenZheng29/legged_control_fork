@@ -124,18 +124,6 @@ void LeggedController::starting(const ros::Time& time) {
   updateStateEstimation(time, ros::Duration(0.002));
   currentObservation_.input.setZero(leggedInterface_->getCentroidalModelInfo().inputDim);
   currentObservation_.mode = ModeNumber::STANCE;
-
-  TargetTrajectories target_trajectories({currentObservation_.time}, {currentObservation_.state}, {currentObservation_.input});
-
-  // Set the first observation and command and wait for optimization to finish
-  mpcMrtInterface_->setCurrentObservation(currentObservation_);
-  mpcMrtInterface_->getReferenceManager().setTargetTrajectories(target_trajectories);
-  ROS_INFO_STREAM("Waiting for the initial policy ...");
-  while (!mpcMrtInterface_->initialPolicyReceived() && ros::ok()) {
-    mpcMrtInterface_->advanceMpc();
-    ros::WallRate(leggedInterface_->mpcSettings().mrtDesiredFrequency_).sleep();
-  }
-  ROS_INFO_STREAM("Initial policy has been received.");
 }
 
 void LeggedController::update(const ros::Time& time, const ros::Duration& period) {
@@ -147,10 +135,13 @@ void LeggedController::update(const ros::Time& time, const ros::Duration& period
       TargetTrajectories target_trajectories({currentObservation_.time}, {currentObservation_.state}, {currentObservation_.input});
       mpcMrtInterface_->resetMpcNode(target_trajectories);
       mpcMrtInterface_->setCurrentObservation(currentObservation_);
+      mpcMrtInterface_->getReferenceManager().setTargetTrajectories(target_trajectories);
       mpcMrtInterface_->advanceMpc();
-      mpcRunning_ = true;
-      initLocomotionSwitch_ = true;
-      ROS_INFO("[Legged Controller] mpc and wbc control");
+      if (mpcMrtInterface_->initialPolicyReceived()) {
+        mpcRunning_ = true;
+        initLocomotionSwitch_ = true;
+        ROS_INFO("[Legged Controller] mpc and wbc control");
+      }
       return;
     }
 

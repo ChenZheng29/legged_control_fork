@@ -6,16 +6,24 @@
 #include "legged_controllers/status_command.h"
 
 #include <geometry_msgs/Twist.h>
+#include <ocs2_core/Types.h>
+#include <ocs2_core/misc/LoadData.h>
 
 using namespace legged;
+using namespace ocs2;
 
 JoystickCommandPublisher::JoystickCommandPublisher(ros::NodeHandle nodeHandle) {
   nodeHandle.param("linear_vel_scale", linear_vel_scale_, 1.0);
   nodeHandle.param("angular_vel_scale", angular_vel_scale_, 1.0);
 
+  std::string referenceFile;
+  nodeHandle.getParam("/referenceFile", referenceFile);
+  loadData::loadCppDataType(referenceFile, "comHeight", com_height_);
+
   locomotion_enable_ = false;
   stage_ = 0;
   gait_ = "stance";
+  cmd_vel_enable_ = true;
 
   vel_pub_ = nodeHandle.advertise<geometry_msgs::Twist>("/cmd_vel", 1);
   status_pub_ = nodeHandle.advertise<legged_controllers::status_command>("/status_command", 1);
@@ -46,17 +54,33 @@ JoystickCommandPublisher::JoystickCommandPublisher(ros::NodeHandle nodeHandle) {
 // 10 Button stick right
 
 void JoystickCommandPublisher::joyCallback(const sensor_msgs::Joy::ConstPtr &joy) {
-  geometry_msgs::Twist twist;
-  twist.linear.x = linear_vel_scale_ * joy->axes[1];
-  twist.linear.y = linear_vel_scale_ * joy->axes[0];
-  twist.angular.z = angular_vel_scale_ * joy->axes[3];
-  vel_pub_.publish(twist);
+  // cmd_vel
+  geometry_msgs::Twist twist{};
+  if (risingEdgeTrigger(9, joy->buttons[9])) {
+    cmd_vel_enable_ = !cmd_vel_enable_;
+    if (!cmd_vel_enable_)
+      vel_pub_.publish(twist);
+  }
+  if (cmd_vel_enable_) {
+    twist.linear.x = linear_vel_scale_ * joy->axes[1];
+    twist.linear.y = linear_vel_scale_ * joy->axes[0];
+    twist.angular.z = angular_vel_scale_ * joy->axes[3];
+    vel_pub_.publish(twist);
+  }
 
+  // status_command
   legged_controllers::status_command status_command;
+  status_command.com_height = com_height_;
   status_command.locomotion_enable = locomotion_enable_;
   status_command.gait = gait_;
   status_command.stage = stage_;
 
+  if (stage_ == 2 && (joy->axes[7] == 1.0 || joy->axes[7] == -1.0)) {
+    com_height_ += 0.0002 * joy->axes[7];
+    com_height_ = std::min(std::max(com_height_, 0.1), 0.8);
+    status_command.com_height = com_height_;
+    status_pub_.publish(status_command);
+  }
   if (risingEdgeTrigger(5, joy->buttons[5])) {
     if (!locomotion_enable_ && stage_ == 2)
       locomotion_enable_ = true;

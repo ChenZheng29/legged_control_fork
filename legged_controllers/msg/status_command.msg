@@ -1,3 +1,4 @@
+float64 com_height
 bool locomotion_enable     # true:mpc and wbc control   false:position control
 
 # mpc and wbc control

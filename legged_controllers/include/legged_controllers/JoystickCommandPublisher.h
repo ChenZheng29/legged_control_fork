@@ -26,6 +26,7 @@ class JoystickCommandPublisher {
   bool locomotion_enable_{};
   int stage_{};
   std::string gait_{};
-
+  bool cmd_vel_enable_{};
+  double com_height_{};
 };
 }
