@@ -199,6 +199,10 @@ void LeggedController::update(const ros::Time& time, const ros::Duration& period
       if (sequenceIndex_ < jointDesSequence_[0].size() - 1)
         sequenceIndex_++;
     }
+
+    // Visualization
+    robotVisualizer_->update(currentObservation_, PrimalSolution(), CommandData());
+    selfCollisionVisualization_->update(currentObservation_);
   }
 
   // Publish the observation. Only needed for the command interface
