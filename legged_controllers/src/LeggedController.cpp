@@ -24,9 +24,13 @@
 #include <legged_wbc/HierarchicalWbc.h>
 #include <legged_wbc/WeightedWbc.h>
 #include <pluginlib/class_list_macros.hpp>
+#include <pinocchio/algorithm/jacobian.hpp>
+#include <pinocchio/algorithm/kinematics.hpp>
+#include <pinocchio/algorithm/joint-configuration.hpp>
+#include <pinocchio/algorithm/frames.hpp>
 
 namespace legged {
-bool LeggedController::init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& controller_nh) {
+bool LeggedController::init(hardware_interface::RobotHW *robot_hw, ros::NodeHandle &controller_nh) {
   // Initialize OCS2
   std::string urdfFile;
   std::string taskFile;
@@ -124,6 +128,9 @@ void LeggedController::starting(const ros::Time& time) {
   updateStateEstimation(time, ros::Duration(0.002));
   currentObservation_.input.setZero(leggedInterface_->getCentroidalModelInfo().inputDim);
   currentObservation_.mode = ModeNumber::STANCE;
+
+//  Eigen::Vector3d position = {0.2, 0.2, -0.5};
+//  eeInverseKinematics(position);
 }
 
 void LeggedController::update(const ros::Time& time, const ros::Duration& period) {
@@ -199,6 +206,12 @@ void LeggedController::update(const ros::Time& time, const ros::Duration& period
       if (sequenceIndex_ < jointDesSequence_[0].size() - 1)
         sequenceIndex_++;
     }
+
+    //test
+    Eigen::Vector3d position = {0.0, -0.1, -0.45};
+    Eigen::VectorXd jointPos(12);
+    eeInverseKinematics(position, jointPos, true);
+    currentObservation_.state.tail(12) = jointPos;
 
     // Visualization
     robotVisualizer_->update(currentObservation_, PrimalSolution(), CommandData());
@@ -306,7 +319,7 @@ void LeggedController::setupMrt() {
               }
             },
             leggedInterface_->mpcSettings().mpcDesiredFrequency_);
-      } catch (const std::exception& e) {
+      } catch (const std::exception &e) {
         controllerRunning_ = false;
         ROS_ERROR_STREAM("[Ocs2 MPC thread] Error : " << e.what());
         stopRequest(ros::Time());
@@ -316,14 +329,93 @@ void LeggedController::setupMrt() {
   setThreadPriority(leggedInterface_->sqpSettings().threadPriority, mpcThread_);
 }
 
-void LeggedController::setupStateEstimate(const std::string& taskFile, bool verbose) {
+bool LeggedController::eeInverseKinematics(const Eigen::Vector3d &footPosDes, Eigen::VectorXd &jointPos, bool verbose) {
+  // get pinocchioInterface
+  PinocchioInterface pinocchioInterface = leggedInterface_->getPinocchioInterface();
+  const auto &model = pinocchioInterface.getModel();
+  auto &data = pinocchioInterface.getData();
+  // set target frameId and get transform from base to thigh
+  const size_t frameId = model.getFrameId("LF_FOOT");
+  Eigen::VectorXd q = pinocchio::neutral(model);
+  // Under this initial configuration, it is possible to find a solution faster and prevent obtaining a solution that exceeds the range of joint motion
+  q[7] = 0.7;
+  q[8] = -1.4;
+  pinocchio::forwardKinematics(model, data, q);
+  Eigen::Vector3d base2thigh = data.oMi[model.getJointId("LF_HFE")].translation();
+  // parameter
+  const double eps = 0.01;
+  const int itMax = 1000;
+  const double dt = 100.0;
+  const double damp = 50.0;
+
+  pinocchio::Data::Matrix6x J(6, model.nv);
+  J.setZero();
+  bool success;
+  Eigen::Matrix<double, 6, 1> err;
+  Eigen::VectorXd v(model.nv);
+  for (int i = 0;; i++) {
+    // update data
+    pinocchio::forwardKinematics(model, data, q);
+    pinocchio::updateFramePlacement(model, data, frameId);
+    // set des
+    const pinocchio::SE3 oMdes(data.oMf[frameId].rotation(), footPosDes + base2thigh);
+    // compute rotation and position error (des - current)
+    const pinocchio::SE3 iMd = data.oMf[frameId].actInv(oMdes);
+    err = pinocchio::log6(iMd).toVector();
+    // exit conditions
+    if (err.norm() < eps) {
+      if ((q[6] >= model.lowerPositionLimit[6] && q[6] <= model.upperPositionLimit[6])
+          && (q[7] >= model.lowerPositionLimit[7] && q[7] <= model.upperPositionLimit[7])
+          && (q[8] >= model.lowerPositionLimit[8] && q[8] <= model.upperPositionLimit[8]))
+        success = true;
+      else
+        success = false;
+      break;
+    }
+    if (i >= itMax) {
+      success = false;
+      break;
+    }
+    // jacobian iteration
+    pinocchio::computeFrameJacobian(model, data, q, frameId, J);
+    pinocchio::Data::Matrix6x Jlog(6, 6);
+    pinocchio::Jlog6(iMd.inverse(), Jlog);
+    J = -Jlog * J;
+    pinocchio::Data::Matrix6 JJt;
+    JJt.noalias() = J * J.transpose();
+    JJt.diagonal().array() += damp;
+    v.noalias() = -J.transpose() * JJt.ldlt().solve(err);
+    q = pinocchio::integrate(model, q, v * dt);
+    // Ensure that the base coordinate system coincides with the world coordinate system, equivalent to adding joint constraints
+    for (int j = 0; j < 6; ++j)
+      q[j] = 0.0;
+  }
+
+  jointPos << q[6], q[7], q[8], q[6], q[7], q[8], -q[6], q[7], q[8], -q[6], q[7], q[8];
+
+  if (verbose) {
+    if (success)
+      std::cout << "success!!!" << std::endl;
+    else
+      std::cout << "fail!!!" << std::endl;
+    std::cout << "\n#### final foot position: " << data.oMf[frameId].translation().transpose() << std::endl;
+    std::cout << "\n#### final foot rpy: " << data.oMf[frameId].rotation().eulerAngles(0, 1, 2).transpose() << std::endl;
+    std::cout << "\n#### final foot position error: " << err.transpose()[0] << " " << err.transpose()[1] << " " << err.transpose()[2] << std::endl;
+    std::cout << "\n#### final joint position: " << q.transpose()[6] << " " << q.transpose()[7] << " " << q.transpose()[8] << std::endl;
+    std::cout << "###############################################################################" << std::endl;
+  }
+
+  return success;
+}
+
+void LeggedController::setupStateEstimate(const std::string &taskFile, bool verbose) {
   stateEstimate_ = std::make_shared<KalmanFilterEstimate>(leggedInterface_->getPinocchioInterface(),
                                                           leggedInterface_->getCentroidalModelInfo(), *eeKinematicsPtr_);
-  dynamic_cast<KalmanFilterEstimate&>(*stateEstimate_).loadSettings(taskFile, verbose);
+  dynamic_cast<KalmanFilterEstimate &>(*stateEstimate_).loadSettings(taskFile, verbose);
   currentObservation_.time = 0;
 }
 
-void LeggedCheaterController::setupStateEstimate(const std::string& /*taskFile*/, bool /*verbose*/) {
+void LeggedCheaterController::setupStateEstimate(const std::string & /*taskFile*/, bool /*verbose*/) {
   stateEstimate_ = std::make_shared<FromTopicStateEstimate>(leggedInterface_->getPinocchioInterface(),
                                                             leggedInterface_->getCentroidalModelInfo(), *eeKinematicsPtr_);
 }

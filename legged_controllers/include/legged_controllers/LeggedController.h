@@ -29,19 +29,20 @@ class LeggedController : public controller_interface::MultiInterfaceController<H
  public:
   LeggedController() = default;
   ~LeggedController() override;
-  bool init(hardware_interface::RobotHW* robot_hw, ros::NodeHandle& controller_nh) override;
-  void update(const ros::Time& time, const ros::Duration& period) override;
-  void starting(const ros::Time& time) override;
-  void stopping(const ros::Time& /*time*/) override { mpcRunning_ = false; }
+  bool init(hardware_interface::RobotHW *robot_hw, ros::NodeHandle &controller_nh) override;
+  void update(const ros::Time &time, const ros::Duration &period) override;
+  void starting(const ros::Time &time) override;
+  void stopping(const ros::Time & /*time*/) override { mpcRunning_ = false; }
 
  protected:
-  virtual void updateStateEstimation(const ros::Time& time, const ros::Duration& period);
+  virtual void updateStateEstimation(const ros::Time &time, const ros::Duration &period);
 
-  virtual void setupLeggedInterface(const std::string& taskFile, const std::string& urdfFile, const std::string& referenceFile,
+  virtual void setupLeggedInterface(const std::string &taskFile, const std::string &urdfFile, const std::string &referenceFile,
                                     bool verbose);
   virtual void setupMpc();
   virtual void setupMrt();
-  virtual void setupStateEstimate(const std::string& taskFile, bool verbose);
+  virtual void setupStateEstimate(const std::string &taskFile, bool verbose);
+  bool eeInverseKinematics(const Eigen::Vector3d &footPosDes, Eigen::VectorXd &jointPos, bool verbose = false);
 
   // Interface
   std::shared_ptr<LeggedInterface> leggedInterface_;
