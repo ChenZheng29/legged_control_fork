@@ -19,6 +19,7 @@
 
 #include "legged_controllers/SafetyChecker.h"
 #include "legged_controllers/visualization/LeggedSelfCollisionVisualization.h"
+#include "legged_controllers/status_command.h"
 
 namespace legged {
 using namespace ocs2;
@@ -42,7 +43,11 @@ class LeggedController : public controller_interface::MultiInterfaceController<H
   virtual void setupMpc();
   virtual void setupMrt();
   virtual void setupStateEstimate(const std::string &taskFile, bool verbose);
-  bool eeInverseKinematics(const Eigen::Vector3d &footPosDes, Eigen::VectorXd &jointPos, bool verbose = false);
+  bool eeInverseKinematics(const std::string &leg,
+                           int hipIndex,
+                           const Eigen::Vector3d &footPosDes,
+                           Eigen::Vector3d &jointPos,
+                           bool verbose = false); // ref: https://github.com/stack-of-tasks/pinocchio/pull/1963/files/b8ff8069f20b15f887af24ae65f03bff32ad3708#diff-632c271335e29edd654d2b482e4ee20ea8173a644cb21c368eb59b3a90be3be3
 
   // Interface
   std::shared_ptr<LeggedInterface> leggedInterface_;
@@ -71,6 +76,9 @@ class LeggedController : public controller_interface::MultiInterfaceController<H
   ros::Publisher observationPublisher_;
 
  private:
+  void statusCommandCallback(const legged_controllers::status_command::ConstPtr &msg);
+  bool getJointPos(const vector_t &footPos, vector_t &jointPos);
+
   std::thread mpcThread_;
   std::atomic_bool controllerRunning_{}, mpcRunning_{};
   benchmark::RepeatedTimer mpcTimer_;

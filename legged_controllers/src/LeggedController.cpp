@@ -5,7 +5,6 @@
 #include <pinocchio/fwd.hpp>  // forward declarations must be included first.
 
 #include "legged_controllers/LeggedController.h"
-#include "legged_controllers/status_command.h"
 
 #include <ocs2_centroidal_model/AccessHelperFunctions.h>
 #include <ocs2_centroidal_model/CentroidalModelPinocchioMapping.h>
@@ -83,41 +82,7 @@ bool LeggedController::init(hardware_interface::RobotHW *robot_hw, ros::NodeHand
   loadData::loadEigenMatrix(referenceFile, "defaultJointState", defaultJointState_);
   loadData::loadEigenMatrix(referenceFile, "squatJointState", squatJointState_);
 
-  auto statusCommandCallback = [this](const legged_controllers::status_command::ConstPtr &msg) {
-    if (locomotionEnable_ != msg->locomotion_enable) {
-      locomotionEnable_ = msg->locomotion_enable;
-      initLocomotionSwitch_ = false;
-    }
-
-    if (stage_ != msg->stage) {
-      stage_ = msg->stage;
-      jointDesSequence_.clear();
-      if (stage_ != 0) {
-        vector_t jointDes(12), jointCurrent(12), jointError(12), jointStep(12);
-        double timeHorizon = 0.5;
-        int num = (int) (timeHorizon / 0.001);
-        if (stage_ == 1)
-          jointDes = squatJointState_;
-        else if (stage_ == 2)
-          jointDes = defaultJointState_;
-        for (int i = 0; i < 12; ++i) {
-          jointCurrent(i) = hybridJointHandles_[i].getPosition();
-          jointError(i) = jointDes(i) - jointCurrent(i);
-          jointStep(i) = jointError(i) / num;
-        }
-
-        for (int i = 0; i < 12; ++i) {
-          vector_t jointDesSequence(num + 1);
-          for (int j = 0; j <= num; ++j) {
-            jointDesSequence(j) = jointCurrent(i) + jointStep(i) * j;
-          }
-          jointDesSequence_.push_back(jointDesSequence);
-        }
-        sequenceIndex_ = 0;
-      }
-    }
-  };
-  statusSubscriber_ = nh.subscribe<legged_controllers::status_command>("/status_command", 1, statusCommandCallback);
+  statusSubscriber_ = nh.subscribe<legged_controllers::status_command>("/status_command", 1, &LeggedController::statusCommandCallback, this);
 
   return true;
 }
@@ -128,9 +93,6 @@ void LeggedController::starting(const ros::Time& time) {
   updateStateEstimation(time, ros::Duration(0.002));
   currentObservation_.input.setZero(leggedInterface_->getCentroidalModelInfo().inputDim);
   currentObservation_.mode = ModeNumber::STANCE;
-
-//  Eigen::Vector3d position = {0.2, 0.2, -0.5};
-//  eeInverseKinematics(position);
 }
 
 void LeggedController::update(const ros::Time& time, const ros::Duration& period) {
@@ -206,12 +168,6 @@ void LeggedController::update(const ros::Time& time, const ros::Duration& period
       if (sequenceIndex_ < jointDesSequence_[0].size() - 1)
         sequenceIndex_++;
     }
-
-    //test
-    Eigen::Vector3d position = {0.0, -0.1, -0.45};
-    Eigen::VectorXd jointPos(12);
-    eeInverseKinematics(position, jointPos, true);
-    currentObservation_.state.tail(12) = jointPos;
 
     // Visualization
     robotVisualizer_->update(currentObservation_, PrimalSolution(), CommandData());
@@ -329,19 +285,23 @@ void LeggedController::setupMrt() {
   setThreadPriority(leggedInterface_->sqpSettings().threadPriority, mpcThread_);
 }
 
-bool LeggedController::eeInverseKinematics(const Eigen::Vector3d &footPosDes, Eigen::VectorXd &jointPos, bool verbose) {
+bool LeggedController::eeInverseKinematics(const std::string &leg,
+                                           const int hipIndex,
+                                           const Eigen::Vector3d &footPosDes,
+                                           Eigen::Vector3d &jointPos,
+                                           bool verbose) {
   // get pinocchioInterface
   PinocchioInterface pinocchioInterface = leggedInterface_->getPinocchioInterface();
   const auto &model = pinocchioInterface.getModel();
   auto &data = pinocchioInterface.getData();
   // set target frameId and get transform from base to thigh
-  const size_t frameId = model.getFrameId("LF_FOOT");
+  const size_t frameId = model.getFrameId(leg + "_FOOT");
   Eigen::VectorXd q = pinocchio::neutral(model);
   // Under this initial configuration, it is possible to find a solution faster and prevent obtaining a solution that exceeds the range of joint motion
-  q[7] = 0.7;
-  q[8] = -1.4;
+  q[hipIndex + 1] = 0.7;
+  q[hipIndex + 2] = -1.4;
   pinocchio::forwardKinematics(model, data, q);
-  Eigen::Vector3d base2thigh = data.oMi[model.getJointId("LF_HFE")].translation();
+  Eigen::Vector3d base2thigh = data.oMi[model.getJointId(leg + "_HFE")].translation();
   // parameter
   const double eps = 0.01;
   const int itMax = 1000;
@@ -364,16 +324,20 @@ bool LeggedController::eeInverseKinematics(const Eigen::Vector3d &footPosDes, Ei
     err = pinocchio::log6(iMd).toVector();
     // exit conditions
     if (err.norm() < eps) {
-      if ((q[6] >= model.lowerPositionLimit[6] && q[6] <= model.upperPositionLimit[6])
-          && (q[7] >= model.lowerPositionLimit[7] && q[7] <= model.upperPositionLimit[7])
-          && (q[8] >= model.lowerPositionLimit[8] && q[8] <= model.upperPositionLimit[8]))
+      if ((q[hipIndex] >= model.lowerPositionLimit[hipIndex] && q[hipIndex] <= model.upperPositionLimit[hipIndex])
+          && (q[hipIndex + 1] >= model.lowerPositionLimit[hipIndex + 1] && q[hipIndex + 1] <= model.upperPositionLimit[hipIndex + 1])
+          && (q[hipIndex + 2] >= model.lowerPositionLimit[hipIndex + 2] && q[hipIndex + 2] <= model.upperPositionLimit[hipIndex + 2])) {
         success = true;
-      else
+        jointPos << q[hipIndex], q[hipIndex + 1], q[hipIndex + 2];
+      } else {
         success = false;
+        ROS_WARN("%s foot inverse kinematics solve fail! (Beyond joint range)", leg.c_str());
+      }
       break;
     }
     if (i >= itMax) {
       success = false;
+      ROS_WARN("%s foot inverse kinematics solve fail! (Reached maximum number of iterations)", leg.c_str());
       break;
     }
     // jacobian iteration
@@ -387,25 +351,76 @@ bool LeggedController::eeInverseKinematics(const Eigen::Vector3d &footPosDes, Ei
     v.noalias() = -J.transpose() * JJt.ldlt().solve(err);
     q = pinocchio::integrate(model, q, v * dt);
     // Ensure that the base coordinate system coincides with the world coordinate system, equivalent to adding joint constraints
-    for (int j = 0; j < 6; ++j)
-      q[j] = 0.0;
+    q.segment<6>(0).setZero();
   }
 
-  jointPos << q[6], q[7], q[8], q[6], q[7], q[8], -q[6], q[7], q[8], -q[6], q[7], q[8];
-
   if (verbose) {
+    std::cout << "###############################################################################" << std::endl;
+    std::cout << "#### leg: " << leg << std::endl;
     if (success)
-      std::cout << "success!!!" << std::endl;
+      std::cout << "#### success!!!" << std::endl;
     else
-      std::cout << "fail!!!" << std::endl;
-    std::cout << "\n#### final foot position: " << data.oMf[frameId].translation().transpose() << std::endl;
-    std::cout << "\n#### final foot rpy: " << data.oMf[frameId].rotation().eulerAngles(0, 1, 2).transpose() << std::endl;
-    std::cout << "\n#### final foot position error: " << err.transpose()[0] << " " << err.transpose()[1] << " " << err.transpose()[2] << std::endl;
-    std::cout << "\n#### final joint position: " << q.transpose()[6] << " " << q.transpose()[7] << " " << q.transpose()[8] << std::endl;
+      std::cout << "#### fail!!!" << std::endl;
+    std::cout << "#### final foot position: " << data.oMf[frameId].translation().transpose() << std::endl;
+    std::cout << "#### final foot rpy: " << data.oMf[frameId].rotation().eulerAngles(0, 1, 2).transpose() << std::endl;
+    std::cout << "#### final foot position error: " << err.transpose()[0] << " " << err.transpose()[1] << " " << err.transpose()[2] << std::endl;
+    std::cout << "#### final joint position: " << q.transpose()[6] << " " << q.transpose()[7] << " " << q.transpose()[8] << std::endl;
     std::cout << "###############################################################################" << std::endl;
   }
 
   return success;
+}
+
+void LeggedController::statusCommandCallback(const legged_controllers::status_command::ConstPtr &msg) {
+  if (locomotionEnable_ != msg->locomotion_enable) {
+    locomotionEnable_ = msg->locomotion_enable;
+    initLocomotionSwitch_ = false;
+  }
+
+  if (stage_ != msg->stage) {
+    stage_ = msg->stage;
+    jointDesSequence_.clear();
+    if (stage_ != 0) {
+      vector_t footPos(12), jointDes(12), jointCurrent(12), jointError(12), jointStep(12);
+      double timeHorizon = 0.5;
+      int num = (int) (timeHorizon / 0.001);
+      if (stage_ == 1) {
+        footPos << 0.05, -0.05, -0.20, 0.05, -0.05, -0.20, 0.05, 0.05, -0.20, 0.05, 0.05, -0.20; // LF,LH,RF,RH
+        if (!getJointPos(footPos, jointDes))
+          jointDes = squatJointState_; // inverse kinematics solve fail
+      } else if (stage_ == 2) {
+        footPos << -0.05, -0.05, -0.45, -0.05, -0.05, -0.45, -0.05, 0.05, -0.45, -0.05, 0.05, -0.45; // LF,LH,RF,RH
+        if (!getJointPos(footPos, jointDes))
+          jointDes = defaultJointState_; // inverse kinematics solve fail
+      }
+      for (int i = 0; i < 12; ++i) {
+        jointCurrent(i) = hybridJointHandles_[i].getPosition();
+        jointError(i) = jointDes(i) - jointCurrent(i);
+        jointStep(i) = jointError(i) / num;
+      }
+
+      for (int i = 0; i < 12; ++i) {
+        vector_t jointDesSequence(num + 1);
+        for (int j = 0; j <= num; ++j) {
+          jointDesSequence(j) = jointCurrent(i) + jointStep(i) * j;
+        }
+        jointDesSequence_.push_back(jointDesSequence);
+      }
+      sequenceIndex_ = 0;
+    }
+  }
+}
+
+bool LeggedController::getJointPos(const vector_t &footPos, vector_t &jointPos) {
+  bool solveFlag[4];
+  Eigen::Vector3d LFJointPos, LHJointPos, RFJointPos, RHJointPos;
+  solveFlag[0] = eeInverseKinematics("LF", 6, footPos.segment<3>(0), LFJointPos);
+  solveFlag[1] = eeInverseKinematics("LH", 9, footPos.segment<3>(3), LHJointPos);
+  solveFlag[2] = eeInverseKinematics("RF", 12, footPos.segment<3>(6), RFJointPos);
+  solveFlag[3] = eeInverseKinematics("RH", 15, footPos.segment<3>(9), RHJointPos);
+  jointPos << LFJointPos, LHJointPos, RFJointPos, RHJointPos;
+
+  return solveFlag[0] && solveFlag[1] && solveFlag[2] && solveFlag[3];
 }
 
 void LeggedController::setupStateEstimate(const std::string &taskFile, bool verbose) {
