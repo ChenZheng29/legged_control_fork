@@ -425,8 +425,7 @@ void LeggedController::statusCommandCallback(const legged_controllers::status_co
       jointDesSequence_.clear();
       timeSequence_.clear();
     } else {
-      vector_t jointInit(12), jointDes(12);
-      double timeHorizon = 0.8;
+      vector_t jointInit(12), jointDes(12), jointError(12);
       // update joint sequence init pos
       if (jointDesSequence_.empty())
         for (int i = 0; i < 12; ++i)
@@ -442,6 +441,13 @@ void LeggedController::statusCommandCallback(const legged_controllers::status_co
         jointDes = squatJointState_;
       else if (stage_ == 2)
         jointDes = defaultJointState_;
+      // update sequence time horizon
+      jointError = jointDes - jointInit;
+      double maxJointError{}, timeHorizon{}, maxJointVel = 1.0;
+      for (int i = 0; i < jointError.size(); ++i)
+        maxJointError = std::max(maxJointError, std::abs(jointError[i]));
+      timeHorizon = maxJointError / maxJointVel;
+      // update sequence
       jointDesSequence_.clear();
       jointDesSequence_.push_back(jointInit);
       jointDesSequence_.push_back(jointDes);
