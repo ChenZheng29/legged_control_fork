@@ -79,14 +79,27 @@ bool LeggedController::init(hardware_interface::RobotHW *robot_hw, ros::NodeHand
   safetyChecker_ = std::make_shared<SafetyChecker>(leggedInterface_->getCentroidalModelInfo());
 
   defaultJointState_.setZero(12);
+  defaultFootPos_.setZero(2);
   squatJointState_.setZero(12);
+  squatFootPos_.setZero(3);
   loadData::loadEigenMatrix(referenceFile, "defaultJointState", defaultJointState_);
+  loadData::loadEigenMatrix(referenceFile, "defaultFootPos", defaultFootPos_);
   loadData::loadEigenMatrix(referenceFile, "squatJointState", squatJointState_);
+  loadData::loadEigenMatrix(referenceFile, "squatFootPos", squatFootPos_);
   loadData::loadCppDataType(referenceFile, "comHeight", comHeight_);
+  loadData::loadCppDataType(referenceFile, "position_control_parameter.kp", kp_);
+  loadData::loadCppDataType(referenceFile, "position_control_parameter.kd", kd_);
+
+  // Init solve inverse kinematics
   vector_t footPos(12), jointDes(12);
-  footPos << 0.0, -0.05, -0.20, 0.0, -0.05, -0.20, 0.0, 0.05, -0.20, 0.0, 0.05, -0.20; // LF,LH,RF,RH
+  footPos << squatFootPos_[0], squatFootPos_[1], squatFootPos_[2], squatFootPos_[0], squatFootPos_[1], squatFootPos_[2],
+      squatFootPos_[0], -squatFootPos_[1], squatFootPos_[2], squatFootPos_[0], -squatFootPos_[1], squatFootPos_[2];
   if (getJointPos(footPos, jointDes))
     squatJointState_ = jointDes;
+  footPos << defaultFootPos_[0], defaultFootPos_[1], -comHeight_, defaultFootPos_[0], defaultFootPos_[1], -comHeight_,
+      defaultFootPos_[0], -defaultFootPos_[1], -comHeight_, defaultFootPos_[0], -defaultFootPos_[1], -comHeight_;
+  if (getJointPos(footPos, jointDes))
+    defaultJointState_ = jointDes;
 
   statusSubscriber_ = nh.subscribe<legged_controllers::status_command>("/status_command", 1, &LeggedController::statusCommandCallback, this);
   targetTrajectoriesDataPublisher_ = nh.advertise<legged_controllers::target_trajectories_data>("/target_trajectories_data", 1, true);
@@ -174,7 +187,7 @@ void LeggedController::update(const ros::Time& time, const ros::Duration& period
       else
         jointDes << LinearInterpolation::interpolate(currentObservation_.time, timeSequence_, jointDesSequence_);
       for (int j = 0; j < leggedInterface_->getCentroidalModelInfo().actuatedDofNum; ++j)
-        hybridJointHandles_[j].setCommand(jointDes[j], 0, 250, 25, 0);
+        hybridJointHandles_[j].setCommand(jointDes[j], 0, kp_, kd_, 0);
     }
 
     // Visualization
@@ -389,7 +402,8 @@ void LeggedController::statusCommandCallback(const legged_controllers::status_co
   if (comHeight_ != msg->com_height) {
     comHeight_ = msg->com_height;
     vector_t footPos(12), jointDes(12);
-    footPos << -0.05, -0.05, -comHeight_, -0.05, -0.05, -comHeight_, -0.05, 0.05, -comHeight_, -0.05, 0.05, -comHeight_; // LF,LH,RF,RH
+    footPos << defaultFootPos_[0], defaultFootPos_[1], -comHeight_, defaultFootPos_[0], defaultFootPos_[1], -comHeight_,
+        defaultFootPos_[0], -defaultFootPos_[1], -comHeight_, defaultFootPos_[0], -defaultFootPos_[1], -comHeight_;
     if (getJointPos(footPos, jointDes)) {
       defaultJointState_ = jointDes;
       isUpdateJointDesSequence_ = true;
@@ -409,7 +423,7 @@ void LeggedController::statusCommandCallback(const legged_controllers::status_co
       timeSequence_.clear();
     } else {
       vector_t jointInit(12), jointDes(12);
-      double timeHorizon = 0.5;
+      double timeHorizon = 0.8;
       if (stage_ == 1)
         jointDes = squatJointState_;
       else if (stage_ == 2)

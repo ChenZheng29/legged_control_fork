@@ -88,7 +88,9 @@ class LeggedController : public controller_interface::MultiInterfaceController<H
   ros::Publisher targetTrajectoriesDataPublisher_;
 
   vector_t defaultJointState_;
+  vector_t defaultFootPos_;
   vector_t squatJointState_;
+  vector_t squatFootPos_;
   vector_array_t jointDesSequence_;
   scalar_array_t timeSequence_;
   bool locomotionEnable_{};
@@ -96,6 +98,7 @@ class LeggedController : public controller_interface::MultiInterfaceController<H
   int stage_{};
   double comHeight_{};
   bool isUpdateJointDesSequence_{};
+  double kp_{}, kd_{};
 };
 
 class LeggedCheaterController : public LeggedController {

@@ -3,7 +3,14 @@ targetRotationVelocity              1.57;
 
 comHeight                           0.45
 
-defaultJointState
+position_control_parameter
+{
+  kp             300
+  kd             25
+}
+
+; stance
+defaultJointState ; if defaultFootPos inverse kinematics solve fail, defaultJointState will be useful
 {
    (0,0)  -0.10   ; LF_HAA
    (1,0)   0.80   ; LF_HFE
@@ -18,8 +25,14 @@ defaultJointState
    (10,0)  0.80   ; RH_HFE
    (11,0) -1.50   ; RH_KFE
 }
+defaultFootPos ; based on thigh
+{
+   (0,0)  -0.04   ; LF x offset
+   (1,0)  -0.05   ; LF y offset
+}
 
-squatJointState
+; squat
+squatJointState ; if squatFootPos inverse kinematics solve fail, squatJointState will be useful
 {
    (0,0)  -0.10   ; LF_HAA
    (1,0)   1.10   ; LF_HFE
@@ -33,6 +46,12 @@ squatJointState
    (9,0)   0.10   ; RH_HAA
    (10,0)  1.10   ; RH_HFE
    (11,0) -2.60   ; RH_KFE
+}
+squatFootPos ; based on thigh
+{
+   (0,0)   0.00   ; LF x offset
+   (1,0)  -0.05   ; LF y offset
+   (2,0)  -0.20   ; LF z offset
 }
 
 initialModeSchedule
