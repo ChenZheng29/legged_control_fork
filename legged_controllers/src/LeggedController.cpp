@@ -431,8 +431,12 @@ void LeggedController::statusCommandCallback(const legged_controllers::status_co
       if (jointDesSequence_.empty())
         for (int i = 0; i < 12; ++i)
           jointInit[i] = hybridJointHandles_[i].getPosition();
-      else
-        jointInit = jointDesSequence_.back();
+      else {
+        if (currentObservation_.time > timeSequence_.back())
+          jointInit << jointDesSequence_.back();
+        else
+          jointInit << LinearInterpolation::interpolate(currentObservation_.time, timeSequence_, jointDesSequence_);
+      }
       jointDesSequence_.clear();
       jointDesSequence_.push_back(jointInit);
       jointDesSequence_.push_back(jointDes);
