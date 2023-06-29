@@ -3,6 +3,7 @@
 //
 
 #include "legged_controllers/TargetTrajectoriesPublisher.h"
+#include "legged_controllers/target_trajectories_data.h"
 
 #include <ocs2_core/Types.h>
 #include <ocs2_core/misc/LoadData.h>
@@ -75,7 +76,14 @@ TargetTrajectoriesPublisher::TargetTrajectoriesPublisher(::ros::NodeHandle &nh, 
   cmdVelSub_ = nh.subscribe<geometry_msgs::Twist>("/cmd_vel", 1, cmdVelCallback);
 
   // status subscriber
-  statusSub_ = nh.subscribe<legged_controllers::status_command>("/status_command", 1, &TargetTrajectoriesPublisher::statusCommandCallback, this);
+  auto targetTrajectoriesDataCallback = [this](const legged_controllers::target_trajectories_data::ConstPtr &msg) {
+    COM_HEIGHT = msg->com_height;
+    for (int i = 0; i < 12; ++i)
+      DEFAULT_JOINT_STATE[i] = msg->default_joint_state[i];
+  };
+
+  targetTrajectoriesDataSub_ =
+      nh.subscribe<legged_controllers::target_trajectories_data>("/target_trajectories_data", 1, targetTrajectoriesDataCallback);
 };
 
 scalar_t TargetTrajectoriesPublisher::estimateTimeToTarget(const vector_t &desiredBaseDisplacement) {
@@ -147,10 +155,6 @@ TargetTrajectories TargetTrajectoriesPublisher::cmdVelToTargetTrajectories(const
   trajectories.stateTrajectory[0].head(3) = cmdVelRot;
   trajectories.stateTrajectory[1].head(3) = cmdVelRot;
   return trajectories;
-}
-
-void TargetTrajectoriesPublisher::statusCommandCallback(const legged_controllers::status_command::ConstPtr &msg) {
-  COM_HEIGHT = msg->com_height;
 }
 
 int main(int argc, char **argv) {

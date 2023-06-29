@@ -4,8 +4,6 @@
 
 #pragma once
 
-#include "legged_controllers/status_command.h"
-
 #include <geometry_msgs/PoseStamped.h>
 #include <geometry_msgs/Twist.h>
 #include <ros/subscriber.h>
@@ -30,11 +28,10 @@ class TargetTrajectoriesPublisher final {
                                                            const SystemObservation &observation,
                                                            const scalar_t &targetReachingTime);
   static scalar_t estimateTimeToTarget(const vector_t &desiredBaseDisplacement);
-  void statusCommandCallback(const legged_controllers::status_command::ConstPtr &msg);
 
   std::unique_ptr<TargetTrajectoriesRosPublisher> targetTrajectoriesPublisher_;
 
-  ::ros::Subscriber observationSub_, goalSub_, cmdVelSub_, statusSub_;
+  ::ros::Subscriber observationSub_, goalSub_, cmdVelSub_, targetTrajectoriesDataSub_;
   tf2_ros::Buffer buffer_;
   tf2_ros::TransformListener tf2_;
 

@@ -85,6 +85,8 @@ class LeggedController : public controller_interface::MultiInterfaceController<H
   benchmark::RepeatedTimer wbcTimer_;
 
   ros::Subscriber statusSubscriber_;
+  ros::Publisher targetTrajectoriesDataPublisher_;
+
   vector_t defaultJointState_;
   vector_t squatJointState_;
   vector_array_t jointDesSequence_;

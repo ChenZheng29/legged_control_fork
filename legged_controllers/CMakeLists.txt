@@ -25,6 +25,7 @@ pkg_check_modules(pinocchio REQUIRED pinocchio)
 add_message_files(
         FILES
         status_command.msg
+        target_trajectories_data.msg
 )
 
 generate_messages(

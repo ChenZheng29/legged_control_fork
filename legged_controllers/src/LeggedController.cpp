@@ -5,6 +5,7 @@
 #include <pinocchio/fwd.hpp>  // forward declarations must be included first.
 
 #include "legged_controllers/LeggedController.h"
+#include "legged_controllers/target_trajectories_data.h"
 
 #include <ocs2_centroidal_model/AccessHelperFunctions.h>
 #include <ocs2_centroidal_model/CentroidalModelPinocchioMapping.h>
@@ -88,6 +89,7 @@ bool LeggedController::init(hardware_interface::RobotHW *robot_hw, ros::NodeHand
     squatJointState_ = jointDes;
 
   statusSubscriber_ = nh.subscribe<legged_controllers::status_command>("/status_command", 1, &LeggedController::statusCommandCallback, this);
+  targetTrajectoriesDataPublisher_ = nh.advertise<legged_controllers::target_trajectories_data>("/target_trajectories_data", 1, true);
 
   return true;
 }
@@ -392,6 +394,11 @@ void LeggedController::statusCommandCallback(const legged_controllers::status_co
       defaultJointState_ = jointDes;
       isUpdateJointDesSequence_ = true;
     }
+    legged_controllers::target_trajectories_data targetTrajectoriesData;
+    targetTrajectoriesData.com_height = comHeight_;
+    for (int i = 0; i < defaultJointState_.size(); ++i)
+      targetTrajectoriesData.default_joint_state.push_back(defaultJointState_[i]);
+    targetTrajectoriesDataPublisher_.publish(targetTrajectoriesData);
   }
 
   if (stage_ != msg->stage || isUpdateJointDesSequence_) {
