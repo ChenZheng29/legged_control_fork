@@ -393,19 +393,21 @@ bool LeggedController::eeInverseKinematics(const std::string &leg,
 }
 
 void LeggedController::statusCommandCallback(const legged_controllers::status_command::ConstPtr &msg) {
+  // switch mpc or position control
   if (locomotionEnable_ != msg->locomotion_enable) {
     locomotionEnable_ = msg->locomotion_enable;
     initLocomotionSwitch_ = false;
     isUpdateJointDesSequence_ = true;
   }
 
+  // update centroid height
   if (comHeight_ != msg->com_height) {
     comHeight_ = msg->com_height;
     vector_t footPos(12), jointDes(12);
     footPos << defaultFootPos_[0], defaultFootPos_[1], -comHeight_, defaultFootPos_[0], defaultFootPos_[1], -comHeight_,
         defaultFootPos_[0], -defaultFootPos_[1], -comHeight_, defaultFootPos_[0], -defaultFootPos_[1], -comHeight_;
     if (getJointPos(footPos, jointDes)) {
-      defaultJointState_ = jointDes;
+      defaultJointState_ = jointDes; // defaultJointState_ need to update when modifying the height
       isUpdateJointDesSequence_ = true;
     }
     legged_controllers::target_trajectories_data targetTrajectoriesData;
@@ -415,6 +417,7 @@ void LeggedController::statusCommandCallback(const legged_controllers::status_co
     targetTrajectoriesDataPublisher_.publish(targetTrajectoriesData);
   }
 
+  // update stage
   if (stage_ != msg->stage || isUpdateJointDesSequence_) {
     isUpdateJointDesSequence_ = false;
     stage_ = msg->stage;
@@ -424,10 +427,7 @@ void LeggedController::statusCommandCallback(const legged_controllers::status_co
     } else {
       vector_t jointInit(12), jointDes(12);
       double timeHorizon = 0.8;
-      if (stage_ == 1)
-        jointDes = squatJointState_;
-      else if (stage_ == 2)
-        jointDes = defaultJointState_;
+      // update joint sequence init pos
       if (jointDesSequence_.empty())
         for (int i = 0; i < 12; ++i)
           jointInit[i] = hybridJointHandles_[i].getPosition();
@@ -437,6 +437,11 @@ void LeggedController::statusCommandCallback(const legged_controllers::status_co
         else
           jointInit << LinearInterpolation::interpolate(currentObservation_.time, timeSequence_, jointDesSequence_);
       }
+      // update joint sequence final pos
+      if (stage_ == 1)
+        jointDes = squatJointState_;
+      else if (stage_ == 2)
+        jointDes = defaultJointState_;
       jointDesSequence_.clear();
       jointDesSequence_.push_back(jointInit);
       jointDesSequence_.push_back(jointDes);

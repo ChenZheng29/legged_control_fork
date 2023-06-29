@@ -93,9 +93,9 @@ class LeggedController : public controller_interface::MultiInterfaceController<H
   vector_t squatFootPos_;
   vector_array_t jointDesSequence_;
   scalar_array_t timeSequence_;
-  bool locomotionEnable_{};
+  bool locomotionEnable_{}; // true:mpc and wbc control   false:position control
   bool initLocomotionSwitch_{};
-  int stage_{};
+  int stage_{}; // 0:damping  1:squat  2:stance
   double comHeight_{};
   bool isUpdateJointDesSequence_{};
   double kp_{}, kd_{};
