@@ -75,11 +75,13 @@ void JoystickCommandPublisher::joyCallback(const sensor_msgs::Joy::ConstPtr &joy
   status_command.gait = gait_;
   status_command.stage = stage_;
 
-  if (stage_ == 2 && (joy->axes[7] == 1.0 || joy->axes[7] == -1.0)) {
-    com_height_ += 0.0002 * joy->axes[7];
-    com_height_ = std::min(std::max(com_height_, 0.1), 0.8);
-    status_command.com_height = com_height_;
-    status_pub_.publish(status_command);
+  if (stage_ == 2) {
+    if (last_joy_axes_[7] == 0.0 && (joy->axes[7] == -1.0 || joy->axes[7] == 1.0)) {
+      com_height_ += 0.05 * joy->axes[7];
+      com_height_ = std::min(std::max(com_height_, 0.2), 0.55);
+      status_command.com_height = com_height_;
+      status_pub_.publish(status_command);
+    }
   }
   if (risingEdgeTrigger(5, joy->buttons[5])) {
     if (!locomotion_enable_ && stage_ == 2)

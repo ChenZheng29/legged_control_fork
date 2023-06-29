@@ -88,10 +88,12 @@ class LeggedController : public controller_interface::MultiInterfaceController<H
   vector_t defaultJointState_;
   vector_t squatJointState_;
   vector_array_t jointDesSequence_;
-  int sequenceIndex_{};
+  scalar_array_t timeSequence_;
   bool locomotionEnable_{};
   bool initLocomotionSwitch_{};
   int stage_{};
+  double comHeight_{};
+  bool isUpdateJointDesSequence_{};
 };
 
 class LeggedCheaterController : public LeggedController {

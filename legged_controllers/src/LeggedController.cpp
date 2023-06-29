@@ -81,6 +81,11 @@ bool LeggedController::init(hardware_interface::RobotHW *robot_hw, ros::NodeHand
   squatJointState_.setZero(12);
   loadData::loadEigenMatrix(referenceFile, "defaultJointState", defaultJointState_);
   loadData::loadEigenMatrix(referenceFile, "squatJointState", squatJointState_);
+  loadData::loadCppDataType(referenceFile, "comHeight", comHeight_);
+  vector_t footPos(12), jointDes(12);
+  footPos << 0.0, -0.05, -0.20, 0.0, -0.05, -0.20, 0.0, 0.05, -0.20, 0.0, 0.05, -0.20; // LF,LH,RF,RH
+  if (getJointPos(footPos, jointDes))
+    squatJointState_ = jointDes;
 
   statusSubscriber_ = nh.subscribe<legged_controllers::status_command>("/status_command", 1, &LeggedController::statusCommandCallback, this);
 
@@ -157,16 +162,17 @@ void LeggedController::update(const ros::Time& time, const ros::Duration& period
       return;
     }
 
-    if (jointDesSequence_.empty()) {
-      for (int j = 0; j < leggedInterface_->getCentroidalModelInfo().actuatedDofNum; ++j) {
+    if (stage_ == 0) {
+      for (int j = 0; j < leggedInterface_->getCentroidalModelInfo().actuatedDofNum; ++j)
         hybridJointHandles_[j].setCommand(0, 0, 0, 20, 0);
-      }
     } else {
-      for (int j = 0; j < leggedInterface_->getCentroidalModelInfo().actuatedDofNum; ++j) {
-        hybridJointHandles_[j].setCommand(jointDesSequence_[j](sequenceIndex_), 0, 250, 40, 0);
-      }
-      if (sequenceIndex_ < jointDesSequence_[0].size() - 1)
-        sequenceIndex_++;
+      vector_t jointDes(12);
+      if (currentObservation_.time > timeSequence_.back())
+        jointDes << jointDesSequence_.back();
+      else
+        jointDes << LinearInterpolation::interpolate(currentObservation_.time, timeSequence_, jointDesSequence_);
+      for (int j = 0; j < leggedInterface_->getCentroidalModelInfo().actuatedDofNum; ++j)
+        hybridJointHandles_[j].setCommand(jointDes[j], 0, 250, 25, 0);
     }
 
     // Visualization
@@ -375,38 +381,43 @@ void LeggedController::statusCommandCallback(const legged_controllers::status_co
   if (locomotionEnable_ != msg->locomotion_enable) {
     locomotionEnable_ = msg->locomotion_enable;
     initLocomotionSwitch_ = false;
+    isUpdateJointDesSequence_ = true;
   }
 
-  if (stage_ != msg->stage) {
-    stage_ = msg->stage;
-    jointDesSequence_.clear();
-    if (stage_ != 0) {
-      vector_t footPos(12), jointDes(12), jointCurrent(12), jointError(12), jointStep(12);
-      double timeHorizon = 0.5;
-      int num = (int) (timeHorizon / 0.001);
-      if (stage_ == 1) {
-        footPos << 0.05, -0.05, -0.20, 0.05, -0.05, -0.20, 0.05, 0.05, -0.20, 0.05, 0.05, -0.20; // LF,LH,RF,RH
-        if (!getJointPos(footPos, jointDes))
-          jointDes = squatJointState_; // inverse kinematics solve fail
-      } else if (stage_ == 2) {
-        footPos << -0.05, -0.05, -0.45, -0.05, -0.05, -0.45, -0.05, 0.05, -0.45, -0.05, 0.05, -0.45; // LF,LH,RF,RH
-        if (!getJointPos(footPos, jointDes))
-          jointDes = defaultJointState_; // inverse kinematics solve fail
-      }
-      for (int i = 0; i < 12; ++i) {
-        jointCurrent(i) = hybridJointHandles_[i].getPosition();
-        jointError(i) = jointDes(i) - jointCurrent(i);
-        jointStep(i) = jointError(i) / num;
-      }
+  if (comHeight_ != msg->com_height) {
+    comHeight_ = msg->com_height;
+    vector_t footPos(12), jointDes(12);
+    footPos << -0.05, -0.05, -comHeight_, -0.05, -0.05, -comHeight_, -0.05, 0.05, -comHeight_, -0.05, 0.05, -comHeight_; // LF,LH,RF,RH
+    if (getJointPos(footPos, jointDes)) {
+      defaultJointState_ = jointDes;
+      isUpdateJointDesSequence_ = true;
+    }
+  }
 
-      for (int i = 0; i < 12; ++i) {
-        vector_t jointDesSequence(num + 1);
-        for (int j = 0; j <= num; ++j) {
-          jointDesSequence(j) = jointCurrent(i) + jointStep(i) * j;
-        }
-        jointDesSequence_.push_back(jointDesSequence);
-      }
-      sequenceIndex_ = 0;
+  if (stage_ != msg->stage || isUpdateJointDesSequence_) {
+    isUpdateJointDesSequence_ = false;
+    stage_ = msg->stage;
+    if (stage_ == 0) {
+      jointDesSequence_.clear();
+      timeSequence_.clear();
+    } else {
+      vector_t jointInit(12), jointDes(12);
+      double timeHorizon = 0.5;
+      if (stage_ == 1)
+        jointDes = squatJointState_;
+      else if (stage_ == 2)
+        jointDes = defaultJointState_;
+      if (jointDesSequence_.empty())
+        for (int i = 0; i < 12; ++i)
+          jointInit[i] = hybridJointHandles_[i].getPosition();
+      else
+        jointInit = jointDesSequence_.back();
+      jointDesSequence_.clear();
+      jointDesSequence_.push_back(jointInit);
+      jointDesSequence_.push_back(jointDes);
+      timeSequence_.clear();
+      timeSequence_.push_back(currentObservation_.time);
+      timeSequence_.push_back(currentObservation_.time + timeHorizon);
     }
   }
 }
