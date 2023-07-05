@@ -55,6 +55,7 @@ class LeggedInterface : public RobotInterface {
 
   const Initializer& getInitializer() const override { return *initializerPtr_; }
   std::shared_ptr<ReferenceManagerInterface> getReferenceManagerPtr() const override { return referenceManagerPtr_; }
+  void resetOcp(const std::string &taskFile, bool verbose);
 
  protected:
   virtual void setupModel(const std::string& taskFile, const std::string& urdfFile, const std::string& referenceFile, bool verbose);

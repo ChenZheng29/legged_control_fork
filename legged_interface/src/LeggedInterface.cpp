@@ -371,4 +371,9 @@ std::unique_ptr<StateCost> LeggedInterface::getSelfCollisionConstraint(const Pin
   return std::make_unique<StateSoftConstraint>(std::move(constraint), std::move(penalty));
 }
 
+void LeggedInterface::resetOcp(const std::string &taskFile, bool verbose) {
+  problemPtr_->costPtr->erase("baseTrackingCost");
+  problemPtr_->costPtr->add("baseTrackingCost", getBaseTrackingCost(taskFile, centroidalModelInfo_, verbose));
+}
+
 }  // namespace legged

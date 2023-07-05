@@ -33,17 +33,17 @@ namespace legged {
 bool LeggedController::init(hardware_interface::RobotHW *robot_hw, ros::NodeHandle &controller_nh) {
   // Initialize OCS2
   std::string urdfFile;
-  std::string taskFile;
-  std::string referenceFile;
   controller_nh.getParam("/urdfFile", urdfFile);
-  controller_nh.getParam("/taskFile", taskFile);
-  controller_nh.getParam("/referenceFile", referenceFile);
+  controller_nh.getParam("/taskFile", taskFile_);
+  controller_nh.getParam("/referenceFile", referenceFile_);
   bool verbose = false;
-  loadData::loadCppDataType(taskFile, "legged_robot_interface.verbose", verbose);
+  loadData::loadCppDataType(taskFile_, "legged_robot_interface.verbose", verbose);
 
-  setupLeggedInterface(taskFile, urdfFile, referenceFile, verbose);
-  setupMpc();
-  setupMrt();
+  setupLeggedInterface(taskFile_, urdfFile, referenceFile_, verbose);
+
+  rbdConversions_ = std::make_shared<CentroidalModelRbdConversions>(leggedInterface_->getPinocchioInterface(),
+                                                                    leggedInterface_->getCentroidalModelInfo());
+
   // Visualization
   ros::NodeHandle nh;
   CentroidalModelPinocchioMapping pinocchioMapping(leggedInterface_->getCentroidalModelInfo());
@@ -68,12 +68,12 @@ bool LeggedController::init(hardware_interface::RobotHW *robot_hw, ros::NodeHand
   imuSensorHandle_ = robot_hw->get<hardware_interface::ImuSensorInterface>()->getHandle("unitree_imu");
 
   // State estimation
-  setupStateEstimate(taskFile, verbose);
+  setupStateEstimate(taskFile_, verbose);
 
   // Whole body control
   wbc_ = std::make_shared<WeightedWbc>(leggedInterface_->getPinocchioInterface(), leggedInterface_->getCentroidalModelInfo(),
                                        *eeKinematicsPtr_);
-  wbc_->loadTasksSetting(taskFile, verbose);
+  wbc_->loadTasksSetting(taskFile_, verbose);
 
   // Safety Checker
   safetyChecker_ = std::make_shared<SafetyChecker>(leggedInterface_->getCentroidalModelInfo());
@@ -82,13 +82,13 @@ bool LeggedController::init(hardware_interface::RobotHW *robot_hw, ros::NodeHand
   defaultFootPos_.setZero(2);
   squatJointState_.setZero(12);
   squatFootPos_.setZero(3);
-  loadData::loadEigenMatrix(referenceFile, "defaultJointState", defaultJointState_);
-  loadData::loadEigenMatrix(referenceFile, "defaultFootPos", defaultFootPos_);
-  loadData::loadEigenMatrix(referenceFile, "squatJointState", squatJointState_);
-  loadData::loadEigenMatrix(referenceFile, "squatFootPos", squatFootPos_);
-  loadData::loadCppDataType(referenceFile, "comHeight", comHeight_);
-  loadData::loadCppDataType(referenceFile, "position_control_parameter.kp", kp_);
-  loadData::loadCppDataType(referenceFile, "position_control_parameter.kd", kd_);
+  loadData::loadEigenMatrix(referenceFile_, "defaultJointState", defaultJointState_);
+  loadData::loadEigenMatrix(referenceFile_, "defaultFootPos", defaultFootPos_);
+  loadData::loadEigenMatrix(referenceFile_, "squatJointState", squatJointState_);
+  loadData::loadEigenMatrix(referenceFile_, "squatFootPos", squatFootPos_);
+  loadData::loadCppDataType(referenceFile_, "comHeight", comHeight_);
+  loadData::loadCppDataType(referenceFile_, "position_control_parameter.kp", kp_);
+  loadData::loadCppDataType(referenceFile_, "position_control_parameter.kd", kd_);
 
   // Init solve inverse kinematics
   vector_t footPos(12), jointDes(12);
@@ -103,6 +103,7 @@ bool LeggedController::init(hardware_interface::RobotHW *robot_hw, ros::NodeHand
 
   statusSubscriber_ = nh.subscribe<legged_controllers::status_command>("/status_command", 1, &LeggedController::statusCommandCallback, this);
   targetTrajectoriesDataPublisher_ = nh.advertise<legged_controllers::target_trajectories_data>("/target_trajectories_data", 1, true);
+  observationPublisher_ = nh.advertise<ocs2_msgs::mpc_observation>("legged_robot_mpc_observation", 1);
 
   return true;
 }
@@ -113,6 +114,28 @@ void LeggedController::starting(const ros::Time& time) {
   updateStateEstimation(time, ros::Duration(0.002));
   currentObservation_.input.setZero(leggedInterface_->getCentroidalModelInfo().inputDim);
   currentObservation_.mode = ModeNumber::STANCE;
+
+  controllerRunning_ = true;
+  mpcThread_ = std::thread([&]() {
+    while (controllerRunning_) {
+      try {
+        executeAndSleep(
+            [&]() {
+              if (mpcRunning_) {
+                mpcTimer_.startTimer();
+                mpcMrtInterface_->advanceMpc();
+                mpcTimer_.endTimer();
+              }
+            },
+            leggedInterface_->mpcSettings().mpcDesiredFrequency_);
+      } catch (const std::exception &e) {
+        controllerRunning_ = false;
+        ROS_ERROR_STREAM("[Ocs2 MPC thread] Error : " << e.what());
+        stopRequest(ros::Time());
+      }
+    }
+  });
+  setThreadPriority(leggedInterface_->sqpSettings().threadPriority, mpcThread_);
 }
 
 void LeggedController::update(const ros::Time& time, const ros::Duration& period) {
@@ -121,6 +144,9 @@ void LeggedController::update(const ros::Time& time, const ros::Duration& period
 
   if (locomotionEnable_) {
     if (!initLocomotionSwitch_) {
+      leggedInterface_->resetOcp(taskFile_, false);
+      setupMpc();
+      setupMrt();
       TargetTrajectories target_trajectories({currentObservation_.time}, {currentObservation_.state}, {currentObservation_.input});
       mpcMrtInterface_->resetMpcNode(target_trajectories);
       mpcMrtInterface_->setCurrentObservation(currentObservation_);
@@ -130,7 +156,8 @@ void LeggedController::update(const ros::Time& time, const ros::Duration& period
         mpcRunning_ = true;
         initLocomotionSwitch_ = true;
         ROS_INFO("[Legged Controller] mpc and wbc control");
-      }
+      } else
+        ROS_INFO("[Legged Controller] mpc initial policy received fail");
       return;
     }
 
@@ -260,10 +287,9 @@ void LeggedController::setupLeggedInterface(const std::string& taskFile, const s
 }
 
 void LeggedController::setupMpc() {
+  mpc_.reset();
   mpc_ = std::make_shared<SqpMpc>(leggedInterface_->mpcSettings(), leggedInterface_->sqpSettings(),
                                   leggedInterface_->getOptimalControlProblem(), leggedInterface_->getInitializer());
-  rbdConversions_ = std::make_shared<CentroidalModelRbdConversions>(leggedInterface_->getPinocchioInterface(),
-                                                                    leggedInterface_->getCentroidalModelInfo());
 
   const std::string robotName = "legged_robot";
   ros::NodeHandle nh;
@@ -275,35 +301,13 @@ void LeggedController::setupMpc() {
   rosReferenceManagerPtr->subscribe(nh);
   mpc_->getSolverPtr()->addSynchronizedModule(gaitReceiverPtr);
   mpc_->getSolverPtr()->setReferenceManager(rosReferenceManagerPtr);
-  observationPublisher_ = nh.advertise<ocs2_msgs::mpc_observation>(robotName + "_mpc_observation", 1);
 }
 
 void LeggedController::setupMrt() {
+  mpcMrtInterface_.reset();
   mpcMrtInterface_ = std::make_shared<MPC_MRT_Interface>(*mpc_);
   mpcMrtInterface_->initRollout(&leggedInterface_->getRollout());
   mpcTimer_.reset();
-
-  controllerRunning_ = true;
-  mpcThread_ = std::thread([&]() {
-    while (controllerRunning_) {
-      try {
-        executeAndSleep(
-            [&]() {
-              if (mpcRunning_) {
-                mpcTimer_.startTimer();
-                mpcMrtInterface_->advanceMpc();
-                mpcTimer_.endTimer();
-              }
-            },
-            leggedInterface_->mpcSettings().mpcDesiredFrequency_);
-      } catch (const std::exception &e) {
-        controllerRunning_ = false;
-        ROS_ERROR_STREAM("[Ocs2 MPC thread] Error : " << e.what());
-        stopRequest(ros::Time());
-      }
-    }
-  });
-  setThreadPriority(leggedInterface_->sqpSettings().threadPriority, mpcThread_);
 }
 
 bool LeggedController::eeInverseKinematics(const std::string &leg,

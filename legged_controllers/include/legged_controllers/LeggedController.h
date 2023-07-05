@@ -99,6 +99,7 @@ class LeggedController : public controller_interface::MultiInterfaceController<H
   double comHeight_{};
   bool isUpdateJointDesSequence_{};
   double kp_{}, kd_{};
+  std::string taskFile_, referenceFile_;
 };
 
 class LeggedCheaterController : public LeggedController {
